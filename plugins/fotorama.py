@@ -1,20 +1,8 @@
 import re
 import hashlib
-from enum import Enum, auto
 from telethon import Button, events
 
-# We use a Python Enum for the state because it's a clean and easy way to do it
-class FotoramaState(Enum):
-	FOTO_ADD_IMAGE = auto()
-	FOTO_ADD_VIDEO = auto()
-	FOTO_ADD_CAPTION = auto()
-	FOTO_EDIT_URL = auto()
-	FOTO_EDIT_CAPTION = auto()
-
-# The state in which different users are, {user_id: state}
-fotorama_state = {}
-fotorama_data = {}
-url_hashes = {}
+urlHashes = {}
 
 def retrieve_fotorama_images_from_db(prodFlag, cur, url=None):
 	if url is None:
@@ -32,12 +20,13 @@ def retrieve_fotorama_images_from_db(prodFlag, cur, url=None):
 			return None
 		return retval[0]
 
-async def add_fotorama_image_to_db(event, prodFlag, con, cur, url, fotoramaType, caption=None):
-	who = event.sender_id
-	if who in fotorama_state:
-		del fotorama_state[who]
-	if who in fotorama_data:
-		del fotorama_data[who]
+async def add_fotorama_image_to_db(event, prodFlag, con, cur, conversationState, conversationData, url, fotoramaType, caption=None):
+	sender = await event.get_sender()
+	who = sender.id
+	if who in conversationState:
+		del conversationState[who]
+	if who in conversationData:
+		del conversationData[who]
 
 	query1 = ""
 	query2 = ""
@@ -115,12 +104,13 @@ def remove_fotorama_image_from_db(prodFlag, con, cur, url):
 	cur.execute(query, (url,))
 	con.commit()
 
-async def fotorama_top_level(event, callback=False):
-	who = event.sender_id
-	if who in fotorama_state:
-		del fotorama_state[who]
-	if who in fotorama_data:
-		del fotorama_data[who]
+async def fotorama_top_level(event, conversationState, conversationData, callback=False):
+	sender = await event.get_sender()
+	who = sender.id
+	if who in conversationState:
+		del conversationState[who]
+	if who in conversationData:
+		del conversationData[who]
 
 	text = "What would you like to do with the fotorama settings?"
 	buttons = [
@@ -134,27 +124,28 @@ async def fotorama_top_level(event, callback=False):
 	else:
 		await event.respond(text, buttons=buttons)
 
-async def init(bot, prodFlag, con, cur, adminTest):
+async def init(bot, prodFlag, con, cur, conversationState, conversationData, IlliniFursState, adminTest):
 	@bot.on(events.NewMessage(pattern='/fotorama'))
 	async def handler(event):
-		if adminTest(event, cur):
-			await fotorama_top_level(event)
+		if await adminTest(event, cur):
+			await fotorama_top_level(event, conversationState, conversationData)
 		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=b'fotorama'))
 	async def handler(event):
-		if adminTest(event, cur):
-			await fotorama_top_level(event, True)
+		if await adminTest(event, cur):
+			await fotorama_top_level(event, conversationState, conversationData, True)
 		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=b'fotorama:add'))
 	async def handler(event):
-		if adminTest(event, cur):
-			who = event.sender_id
-			if who in fotorama_state:
-				del fotorama_state[who]
-			if who in fotorama_data:
-				del fotorama_data[who]
+		if await adminTest(event, cur):
+			sender = await event.get_sender()
+			who = sender.id
+			if who in conversationState:
+				del conversationState[who]
+			if who in conversationData:
+				del conversationData[who]
 
 			text = "Will this item be an image, or a video?"
 			buttons = [
@@ -170,53 +161,59 @@ async def init(bot, prodFlag, con, cur, adminTest):
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:add:(image|video)')))
 	async def handler(event):
-		if adminTest(event, cur):
-			who = event.sender_id
+		if await adminTest(event, cur):
+			sender = await event.get_sender()
+			who = sender.id
 			text = "Ok, tell me the URL of the item you want to add."
+			buttons = [Button.inline("Cancel", b'fotorama:add')]
 			fotoramaType = event.data_match[1].decode('utf8')
 
 			if fotoramaType == "image":
-				fotorama_state[who] = FotoramaState.FOTO_ADD_IMAGE
+				conversationState[who] = IlliniFursState.FOTO_ADD_IMAGE
 			else:
-				fotorama_state[who] = FotoramaState.FOTO_ADD_VIDEO
+				conversationState[who] = IlliniFursState.FOTO_ADD_VIDEO
 
-			await event.respond(text)
+			await event.edit(text, buttons=buttons)
 		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:add:yes')))
 	async def handler(event):
-		if adminTest(event, cur):
-			who = event.sender_id
+		if await adminTest(event, cur):
+			sender = await event.get_sender()
+			who = sender.id
 			text = "Ok, tell me the caption for the item you want to add."
-			fotorama_state[who] = FotoramaState.FOTO_ADD_CAPTION
-			await event.respond(text)
+			buttons = [Button.inline("Cancel", b'fotorama:add')]
+			conversationState[who] = IlliniFursState.FOTO_ADD_CAPTION
+			await event.edit(text, buttons=buttons)
 		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:add:no')))
 	async def handler(event):
-		if adminTest(event, cur):
-			who = event.sender_id
-			data = fotorama_data.get(who)
-			await add_fotorama_image_to_db(event, prodFlag, con, cur, data.get('url'), data.get('type'))
+		if await adminTest(event, cur):
+			sender = await event.get_sender()
+			who = sender.id
+			data = conversationData.get(who)
+			await add_fotorama_image_to_db(event, prodFlag, con, cur, conversationState, conversationData, data.get('url'), data.get('type'))
 		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=b'fotorama:remove'))
 	async def handler(event):
-		if adminTest(event, cur):
+		if await adminTest(event, cur):
 			text = "Which item would you like to remove?"
 			urls = retrieve_fotorama_images_from_db(prodFlag, cur)
 			for (url,) in urls:
-				url_hashes[hashlib.sha256(url.encode()).hexdigest()[:16]] = url
-			buttons = [ [Button.inline(url, bytes("fotorama:remove:%s" % urlHash, encoding="utf8"))] for urlHash, url in url_hashes.items() ]
+				urlHashes[hashlib.sha256(url.encode()).hexdigest()[:16]] = url
+			buttons = [ [Button.inline(url, bytes("fotorama:remove:%s" % urlHash, encoding="utf8"))] for urlHash, url in urlHashes.items() ]
 			buttons.append([Button.inline("<< Back to fotorama menu", b'fotorama')])
 			await event.edit(text, buttons=buttons)
 		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:remove:(.*)')))
 	async def handler(event):
-		if adminTest(event, cur):
+		if await adminTest(event, cur):
 			urlHash = event.data_match[1].decode('utf8')
-			url = url_hashes.get(urlHash)
+			url = urlHashes.get(urlHash)
+			del urlHashes[urlHash]
 			remove_fotorama_image_from_db(prodFlag, con, cur, url)
 			text = "Item with url %s removed from DB! Would you like to remove another item?" % url
 			buttons = [
@@ -229,27 +226,35 @@ async def init(bot, prodFlag, con, cur, adminTest):
 
 	@bot.on(events.CallbackQuery(data=b'fotorama:edit'))
 	async def handler(event):
-		if adminTest(event, cur):
-			who = event.sender_id
-			if who in fotorama_state:
-				del fotorama_state[who]
-			if who in fotorama_data:
-				del fotorama_data[who]
+		if await adminTest(event, cur):
+			sender = await event.get_sender()
+			who = sender.id
+			if who in conversationState:
+				del conversationState[who]
+			if who in conversationData:
+				del conversationData[who]
 
 			text = "Which item would you like to edit?"
-			urls = retrieve_fotorama_images_from_db(cur)
+			urls = retrieve_fotorama_images_from_db(prodFlag, cur)
 			for (url,) in urls:
-				url_hashes[hashlib.sha256(url.encode()).hexdigest()[:16]] = url
-			buttons = [ [Button.inline(url, bytes("fotorama:edit:gen:%s" % urlHash, encoding="utf8"))] for urlHash, url in url_hashes.items()]
+				urlHashes[hashlib.sha256(url.encode()).hexdigest()[:16]] = url
+			buttons = [ [Button.inline(url, bytes("fotorama:edit:gen:%s" % urlHash, encoding="utf8"))] for urlHash, url in urlHashes.items()]
 			buttons.append([Button.inline("<< Back to fotorama menu", b'fotorama')])
 			await event.edit(text, buttons=buttons)
 		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:gen:(.*)')))
 	async def handler(event):
-		if adminTest(event, cur):
+		if await adminTest(event, cur):
+			sender = await event.get_sender()
+			who = sender.id
+			if who in conversationState:
+				del conversationState[who]
+			if who in conversationData:
+				del conversationData[who]
+
 			urlHash = event.data_match[1].decode('utf8')
-			url = url_hashes.get(urlHash)
+			url = urlHashes.get(urlHash)
 			(url, fotoramaType, caption) = retrieve_fotorama_images_from_db(prodFlag, cur, url)
 			text = """Editing info for fotorama item.
 
@@ -271,19 +276,21 @@ Caption: %s""" % (url, fotoramaType, caption)
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:url:(.*)')))
 	async def handler(event):
-		if adminTest(event, cur):
-			who = event.sender_id
+		if await adminTest(event, cur):
+			sender = await event.get_sender()
+			who = sender.id
 			urlHash = event.data_match[1].decode('utf8')
-			url = url_hashes.get(urlHash)
-			fotorama_state[who] = FotoramaState.FOTO_EDIT_URL
-			fotorama_data[who] = {"url": url}
+			url = urlHashes.get(urlHash)
+			conversationState[who] = IlliniFursState.FOTO_EDIT_URL
+			conversationData[who] = {"url": url}
 			text = "Ok, tell me the new URL for this item."
-			await event.respond(text)
+			buttons = [Button.inline("Cancel", bytes("fotorama:edit:gen:%s" % urlHash, encoding="utf8"))]
+			await event.edit(text, buttons=buttons)
 		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:type:(.*)')))
 	async def handler(event):
-		if adminTest(event, cur):
+		if await adminTest(event, cur):
 			urlHash = event.data_match[1].decode('utf8')
 			text = "Is this an image or a video?"
 			buttons = [
@@ -298,10 +305,10 @@ Caption: %s""" % (url, fotoramaType, caption)
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:(image|video):(.*)')))
 	async def handler(event):
-		if adminTest(event, cur):
+		if await adminTest(event, cur):
 			fotoramaType = event.data_match[1].decode('utf8')
 			urlHash = event.data_match[2].decode('utf8')
-			url = url_hashes.get(urlHash)
+			url = urlHashes.get(urlHash)
 
 			edit_fotorama_image_in_db(prodFlag, con, cur, url, fotoramaType=fotoramaType)
 
@@ -315,21 +322,23 @@ Caption: %s""" % (url, fotoramaType, caption)
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:caption:(.*)')))
 	async def handler(event):
-		if adminTest(event, cur):
-			who = event.sender_id
+		if await adminTest(event, cur):
+			sender = await event.get_sender()
+			who = sender.id
 			urlHash = event.data_match[1].decode('utf8')
-			url = url_hashes.get(urlHash)
-			fotorama_state[who] = FotoramaState.FOTO_EDIT_CAPTION
-			fotorama_data[who] = {"url": url}
+			url = urlHashes.get(urlHash)
+			conversationState[who] = IlliniFursState.FOTO_EDIT_CAPTION
+			conversationData[who] = {"url": url}
 			text = "Ok, tell me the new caption for this item."
-			await event.respond(text)
+			buttons = [Button.inline("Cancel", bytes("fotorama:edit:gen:%s" % urlHash, encoding="utf8"))]
+			await event.edit(text, buttons=buttons)
 		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:remove:caption:(.*)')))
 	async def handler(event):
-		if adminTest(event, cur):
+		if await adminTest(event, cur):
 			urlHash = event.data_match[1].decode('utf8')
-			url = url_hashes.get(urlHash)
+			url = urlHashes.get(urlHash)
 			remove_caption_from_fotorama_image(prodFlag, con, cur, url)
 			text = "Success! Item updated."
 			buttons = [
@@ -341,14 +350,15 @@ Caption: %s""" % (url, fotoramaType, caption)
 
 	@bot.on(events.NewMessage)
 	async def handler(event):
-		if adminTest(event, cur):
-			who = event.sender_id
-			state = fotorama_state.get(who)
+		if await adminTest(event, cur):
+			sender = await event.get_sender()
+			who = sender.id
+			state = conversationState.get(who)
 
 			if state is None:
 				return
 
-			elif (state == FotoramaState.FOTO_ADD_IMAGE or state == FotoramaState.FOTO_ADD_VIDEO):
+			elif (state == IlliniFursState.FOTO_ADD_IMAGE or state == IlliniFursState.FOTO_ADD_VIDEO):
 				text = "Would you like to add a caption for this item?"
 				buttons = [
 					[
@@ -359,47 +369,56 @@ Caption: %s""" % (url, fotoramaType, caption)
 				]
 
 				data = None
-				if state == FotoramaState.FOTO_ADD_IMAGE:
+				if state == IlliniFursState.FOTO_ADD_IMAGE:
 					data = {
 						"url": event.text,
 						"type": "image"
 					}
-					if who in fotorama_state:
-						del fotorama_state[who]
-					fotorama_data[who] = data
+					if who in conversationState:
+						del conversationState[who]
+					conversationData[who] = data
 				else:
 					data = {
 						"url": event.text,
 						"type": "video"
 					}
-					if who in fotorama_state:
-						del fotorama_state[who]
-					fotorama_data[who] = data
+					if who in conversationState:
+						del conversationState[who]
+					conversationData[who] = data
 				
 				await event.respond(text, buttons=buttons)
 				raise events.StopPropagation
 
-			elif state == FotoramaState.FOTO_ADD_CAPTION:
-				data = fotorama_data.get(who)
+			elif state == IlliniFursState.FOTO_ADD_CAPTION:
+				data = conversationData.get(who)
 				caption = event.text
-				await add_fotorama_image_to_db(event, prodFlag, con, cur, data.get('url'), data.get('type'), caption)
+				await add_fotorama_image_to_db(event, prodFlag, con, cur, conversationState, conversationData, data.get('url'), data.get('type'), caption)
 				raise events.StopPropagation
 
-			elif (state == FotoramaState.FOTO_EDIT_URL or state == FotoramaState.FOTO_EDIT_CAPTION):
-				data = fotorama_data.get(who)
+			elif (state == IlliniFursState.FOTO_EDIT_URL or state == IlliniFursState.FOTO_EDIT_CAPTION):
+				data = conversationData.get(who)
 				url = data.get('url')
+				urlHash = hashlib.sha256(url.encode()).hexdigest()[:16]
 
-				if who in fotorama_state:
-					del fotorama_state[who]
-				if who in fotorama_data:
-					del fotorama_data[who]
+				if who in conversationState:
+					del conversationState[who]
+				if who in conversationData:
+					del conversationData[who]
 
 				text = "Success! Item updated."
 				update = event.text
 
-				if state == FotoramaState.FOTO_EDIT_URL:
+				if state == IlliniFursState.FOTO_EDIT_URL:
 					edit_fotorama_image_in_db(prodFlag, con, cur, url, newURL=update)
+					del urlHashes[urlHash]
+					urlHash = hashlib.sha256(update.encode()).hexdigest()[:16]
+					urlHashes[urlHash] = update
 				else:
 					edit_fotorama_image_in_db(prodFlag, con, cur, url, caption=update)
 
-				await event.respond(text)
+				buttons = [
+					Button.inline("Continue editing", bytes("fotorama:edit:gen:%s" % urlHash, encoding="utf8")),
+					Button.inline("<< Back to URL list", b'fotorama:edit')
+				]
+
+				await event.respond(text, buttons=buttons)

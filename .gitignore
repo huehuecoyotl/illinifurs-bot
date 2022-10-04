@@ -1,4 +1,6 @@
 *.db
+*.jpg
+*.png
 *.session
 *.session-journal
 plugins/__pycache__/
