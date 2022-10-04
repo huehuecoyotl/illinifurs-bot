@@ -145,6 +145,7 @@ async def init(bot, prodFlag, con, cur, adminTest):
 	async def handler(event):
 		if adminTest(event, cur):
 			await fotorama_top_level(event, True)
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=b'fotorama:add'))
 	async def handler(event):
@@ -165,6 +166,7 @@ async def init(bot, prodFlag, con, cur, adminTest):
 			]
 
 			await event.edit(text, buttons=buttons)
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:add:(image|video)')))
 	async def handler(event):
@@ -179,6 +181,7 @@ async def init(bot, prodFlag, con, cur, adminTest):
 				fotorama_state[who] = FotoramaState.FOTO_ADD_VIDEO
 
 			await event.respond(text)
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:add:yes')))
 	async def handler(event):
@@ -187,6 +190,7 @@ async def init(bot, prodFlag, con, cur, adminTest):
 			text = "Ok, tell me the caption for the item you want to add."
 			fotorama_state[who] = FotoramaState.FOTO_ADD_CAPTION
 			await event.respond(text)
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:add:no')))
 	async def handler(event):
@@ -194,6 +198,7 @@ async def init(bot, prodFlag, con, cur, adminTest):
 			who = event.sender_id
 			data = fotorama_data.get(who)
 			await add_fotorama_image_to_db(event, prodFlag, con, cur, data.get('url'), data.get('type'))
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=b'fotorama:remove'))
 	async def handler(event):
@@ -205,6 +210,7 @@ async def init(bot, prodFlag, con, cur, adminTest):
 			buttons = [ [Button.inline(url, bytes("fotorama:remove:%s" % urlHash, encoding="utf8"))] for urlHash, url in url_hashes.items() ]
 			buttons.append([Button.inline("<< Back to fotorama menu", b'fotorama')])
 			await event.edit(text, buttons=buttons)
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:remove:(.*)')))
 	async def handler(event):
@@ -219,6 +225,7 @@ async def init(bot, prodFlag, con, cur, adminTest):
 			]
 			
 			await event.edit(text, buttons=buttons)
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=b'fotorama:edit'))
 	async def handler(event):
@@ -236,6 +243,7 @@ async def init(bot, prodFlag, con, cur, adminTest):
 			buttons = [ [Button.inline(url, bytes("fotorama:edit:gen:%s" % urlHash, encoding="utf8"))] for urlHash, url in url_hashes.items()]
 			buttons.append([Button.inline("<< Back to fotorama menu", b'fotorama')])
 			await event.edit(text, buttons=buttons)
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:gen:(.*)')))
 	async def handler(event):
@@ -259,6 +267,7 @@ Caption: %s""" % (url, fotoramaType, caption)
 				[Button.inline("<< Back to URL list", b'fotorama:edit')]
 			]
 			await event.edit(text, buttons=buttons)
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:url:(.*)')))
 	async def handler(event):
@@ -270,6 +279,7 @@ Caption: %s""" % (url, fotoramaType, caption)
 			fotorama_data[who] = {"url": url}
 			text = "Ok, tell me the new URL for this item."
 			await event.respond(text)
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:type:(.*)')))
 	async def handler(event):
@@ -284,6 +294,7 @@ Caption: %s""" % (url, fotoramaType, caption)
 				[Button.inline("Cancel", bytes("fotorama:edit:gen:%s" % urlHash, encoding="utf8"))]
 			]
 			await event.edit(text, buttons=buttons)
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:(image|video):(.*)')))
 	async def handler(event):
@@ -300,7 +311,7 @@ Caption: %s""" % (url, fotoramaType, caption)
 				Button.inline("<< Back to URL list", b'fotorama:edit')
 			]
 			await event.edit(text, buttons=buttons)
-
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:caption:(.*)')))
 	async def handler(event):
@@ -312,6 +323,7 @@ Caption: %s""" % (url, fotoramaType, caption)
 			fotorama_data[who] = {"url": url}
 			text = "Ok, tell me the new caption for this item."
 			await event.respond(text)
+		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:remove:caption:(.*)')))
 	async def handler(event):
@@ -325,6 +337,7 @@ Caption: %s""" % (url, fotoramaType, caption)
 				Button.inline("<< Back to URL list", b'fotorama:edit')
 			]
 			await event.edit(text, buttons=buttons)
+		raise events.StopPropagation
 
 	@bot.on(events.NewMessage)
 	async def handler(event):

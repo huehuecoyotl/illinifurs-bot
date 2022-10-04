@@ -48,6 +48,7 @@ else:
 
 async def main():
     async with (await TelegramClient("illinifurs_bot", secrets["tg-api-id"], secrets["tg-api-hash"]).start(bot_token=secrets["tg-bot-token"])) as bot:
+        await admin.init(bot, cur, admin.adminTest)
         await fotorama.init(bot, prodFlag, con, cur, admin.adminTest)
         await bot.run_until_disconnected()
 
