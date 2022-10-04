@@ -5,11 +5,13 @@ import json
 import socket
 import asyncio
 import sqlite3
+import logging
 import mysql.connector
 from enum import Enum, auto
 from plugins import fotorama, officers, admin
-
 from telethon import TelegramClient
+
+logging.basicConfig(filename='illinifurs-bot.log', filemode='a', format='Bot - %(levelname)s - %(message)s', level=logging.WARNING)
 
 SECRET_FILE = os.path.expanduser("~/secrets/secret.json")
 
@@ -37,6 +39,7 @@ else:
         CREATE TABLE IF NOT EXISTS officers (
             id INTEGER PRIMARY KEY,
             username TEXT NOT NULL,
+            displayName TEXT,
             title TEXT NOT NULL,
             imageURL TEXT NOT NULL,
             chatInviter INTEGER NOT NULL
@@ -44,9 +47,9 @@ else:
     # You'll need to find your telegram id, add it here, and run this line once to test admin bot commands
     # cur.execute("""
     #     INSERT INTO officers
-    #         (id, username, title, imageURL, chatInviter)
+    #         (id, username, displayName, title, imageURL, chatInviter)
     #         VALUES
-    #         (154194108, 'stanthreetimes', 'admin', 'https://coyo.tl/images/profile.png', 1);
+    #         (154194108, 'stanthreetimes', 'Stanford Stills', 'site-admin', 'https://coyo.tl/images/profile.png', 1);
     #     """)
     con.commit()
 

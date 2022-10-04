@@ -17,18 +17,18 @@ def retrieve_officer_from_db(prodFlag, cur, title):
         return None
     return retval[0]
 
-def add_officer_to_db(prodFlag, con, cur, adminId, username, title, imageURL):
+def add_officer_to_db(prodFlag, con, cur, adminId, username, displayName, title, imageURL):
     chatInviter = False
     if title == "President" or title == "Vice President":
         chatInviter = True
     query = ""
-    queryVars = (adminId, username, title, imageURL, chatInviter)
+    queryVars = (adminId, username, displayName, title, imageURL, chatInviter)
     if prodFlag:
         query1 = "DELETE FROM officers WHERE title=%s"
-        query2 = "INSERT INTO officers (id, username, title, imageURL, chatInviter) VALUES (%s, %s, %s, %s, %s)"
+        query2 = "INSERT INTO officers (id, username, displayName, title, imageURL, chatInviter) VALUES (%s, %s, %s, %s, %s, %s)"
     else:
         query1 = "DELETE FROM officers WHERE title=?"
-        query2 = "INSERT INTO officers (id, username, title, imageURL, chatInviter) VALUES (?, ?, ?, ?, ?)"
+        query2 = "INSERT INTO officers (id, username, displayName, title, imageURL, chatInviter) VALUES (?, ?, ?, ?, ?, ?)"
     cur.execute(query1, (title,))
     cur.execute(query2, queryVars)
     con.commit()
@@ -40,6 +40,16 @@ def update_officer_image_in_db(prodFlag, con, cur, adminId, imageURL):
         query = "UPDATE officers SET imageURL=%s WHERE id=%s"
     else:
         query = "UPDATE officers SET imageURL=? WHERE id=?"
+    cur.execute(query, queryVars)
+    con.commit()
+
+def update_officer_display_name_in_db(prodFlag, con, cur, adminId, displayName):
+    query = ""
+    queryVars = (displayName, adminId)
+    if prodFlag:
+        query = "UPDATE officers SET displayName=%s WHERE id=%s"
+    else:
+        query = "UPDATE officers SET displayName=? WHERE id=?"
     cur.execute(query, queryVars)
     con.commit()
 
@@ -106,21 +116,26 @@ async def init(bot, prodFlag, con, cur, conversationState, conversationData, Ill
                 title = "Vice President"
             response = retrieve_officer_from_db(prodFlag, cur, title)
             username = None
+            displayName = None
             imageURL = None
             if response is not None:
-                (adminId, username, title, imageURL, chatInviter) = response
+                (adminId, username, displayName, title, imageURL, chatInviter) = response
             if imageURL is not None and not imageURL.startswith("http"):
                 imageURL = "https://illinifurs.com%s" % imageURL
             text = """Editing %s's info.
 
 Username: @%s
-Profile Pic: %s""" % (title, username, imageURL)
+Display Name: %s
+Profile Pic: %s""" % (title, username, displayName, imageURL)
             buttons = [
                 [
                     Button.inline("Update to new user", bytes("officers:%s:user" % baseTitle, encoding="utf8")),
-                    Button.inline("Refresh profile pic", bytes("officers:%s:pic" % baseTitle, encoding="utf8"))
+                    Button.inline("Refresh display name", bytes("officers:%s:name" % baseTitle, encoding="utf8"))
                 ],
-                [Button.inline("<< Back to officers menu", b'officers')]
+                [
+                    Button.inline("Refresh profile pic", bytes("officers:%s:pic" % baseTitle, encoding="utf8")),
+                    Button.inline("<< Back to officers menu", b'officers')
+                ]
             ]
             await event.edit(text, buttons=buttons)
         raise events.StopPropagation
@@ -145,6 +160,36 @@ Profile Pic: %s""" % (title, username, imageURL)
             await event.edit(text, buttons=buttons)
         raise events.StopPropagation
 
+    @bot.on(events.CallbackQuery(data=re.compile(b'officers:(president|treasurer|vp):name')))
+    async def handler(event):
+        if await adminTest(event, cur):
+            baseTitle = event.data_match[1].decode('utf8')
+            title = ""
+            if baseTitle == "president":
+                title = "President"
+            elif baseTitle == "treasurer":
+                title = "Treasurer"
+            elif baseTitle == "vp":
+                title = "Vice President"
+            response = retrieve_officer_from_db(prodFlag, cur, url)
+            adminId = None
+            username = None
+            imageURL = None
+            text = ""
+            if response is not None:
+                (adminId, username, displayName, title, imageURL, chatInviter) = response
+                newImageURL = await download_profile_pic(bot, prodFlag, username, baseTitle)
+                update_officer_image_in_db(prodFlag, con, cur, adminId, newImageURL)
+                text = "The %s's display name has been refreshed! It is now %s" % (title, displayName)
+            else:
+                text = "There appears to be no current %s. Please enter one into the DB first!" % title
+            buttons = [
+                Button.inline("Continue editing" , bytes("officers:%s" % baseTitle, encoding="utf8")),
+                Button.inline("<< Back to officers menu", b'officers')
+            ]
+            await event.edit(text, buttons=buttons)
+        raise events.StopPropagation
+
     @bot.on(events.CallbackQuery(data=re.compile(b'officers:(president|treasurer|vp):pic')))
     async def handler(event):
         if await adminTest(event, cur):
@@ -162,7 +207,7 @@ Profile Pic: %s""" % (title, username, imageURL)
             imageURL = None
             text = ""
             if response is not None:
-                (adminId, username, title, imageURL, chatInviter) = response
+                (adminId, username, displayName, title, imageURL, chatInviter) = response
                 newImageURL = await download_profile_pic(bot, prodFlag, username, baseTitle)
                 update_officer_image_in_db(prodFlag, con, cur, adminId, newImageURL)
                 text = "The %s's profile pic has been refreshed! It is now https://illinifurs.com%s" % (title, newImageURL)
@@ -213,7 +258,8 @@ Profile Pic: %s""" % (title, username, imageURL)
                     user = await bot.get_entity(username)
                     adminId = user.id
                     imageURL = await download_profile_pic(bot, prodFlag, username, baseTitle)
-                    add_officer_to_db(prodFlag, con, cur, adminId, username, title, imageURL)
+                    displayName = utils.get_display_name(user)
+                    add_officer_to_db(prodFlag, con, cur, adminId, username, displayName, title, imageURL)
 
                     text = "Success! The %s has been updated." % title
                     buttons = [
