@@ -38,12 +38,13 @@ else:
             title TEXT NOT NULL,
             chatInviter INTEGER NOT NULL
         );""")
-    cur.execute("""
-        INSERT INTO officers
-            (id, title, chatInviter)
-            VALUES
-            (154194108, 'admin', 1);
-        """)
+    # You'll need to find your telegram id, add it here, and run this line once to test admin bot commands
+    # cur.execute("""
+    #     INSERT INTO officers
+    #         (id, title, chatInviter)
+    #         VALUES
+    #         (154194108, 'admin', 1);
+    #     """)
     con.commit()
 
 async def main():

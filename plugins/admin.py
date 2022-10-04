@@ -1,3 +1,4 @@
+import os
 from telethon import events
 
 SITE_SCRIPT = os.path.expanduser("~/site/source/post_deploy.sh")
