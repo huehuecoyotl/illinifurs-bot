@@ -30,26 +30,15 @@ async def add_fotorama_image_to_db(event, prodFlag, con, cur, conversationState,
 
 	query1 = ""
 	query2 = ""
-	if caption is None:
-		if prodFlag:
-			query1 = "UPDATE fotorama SET type=%s WHERE url=%s"
-			query2 = "INSERT INTO fotorama (url, type) VALUES (%s, %s)" 
-		else:
-			query1 = "UPDATE fotorama SET type=? WHERE url=?"
-			query2 = "INSERT INTO fotorama (url, type) VALUES (?, ?)"
-		cur.execute(query1, (fotoramaType, url))
-		cur.execute(query2, (url, fotoramaType))
-		con.commit()
+	if prodFlag:
+		query1 = "DELETE FROM fotorama WHERE url=%s"
+		query2 = "INSERT INTO fotorama (url, type, caption) VALUES (%s, %s, %s)" 
 	else:
-		if prodFlag:
-			query1 = "UPDATE fotorama SET type=%s, caption=%s WHERE url=%s"
-			query2 = "INSERT INTO fotorama (url, type, caption) VALUES (%s, %s, %s)" 
-		else:
-			query1 = "UPDATE fotorama SET type=?, caption=? WHERE url=?"
-			query2 = "INSERT INTO fotorama (url, type, caption) VALUES (?, ?, ?)"
-		cur.execute(query1, (fotoramaType, caption, url))
-		cur.execute(query2, (url, fotoramaType, caption))
-		con.commit()
+		query1 = "DELETE FROM fotorama WHERE url=?"
+		query2 = "INSERT INTO fotorama (url, type, caption) VALUES (?, ?, ?)"
+	cur.execute(query1, (url,))
+	cur.execute(query2, (url, fotoramaType, caption))
+	con.commit()
 
 	text = "Item added to database!"
 	buttons = [
@@ -62,38 +51,25 @@ async def add_fotorama_image_to_db(event, prodFlag, con, cur, conversationState,
 		await event.respond(text, buttons=buttons)
 
 def edit_fotorama_image_in_db(prodFlag, con, cur, oldURL, newURL=None, fotoramaType=None, caption=None):
-	query = ""
-	queryVars = None
 	if newURL is not None:
-		if prodFlag:
-			query = "UPDATE fotorama SET url=%s WHERE url=%s"
-		else:
-			query = "UPDATE fotorama SET url=? WHERE url=?"
-		queryVars = (newURL, oldURL)
-	elif fotoramaType is not None:
-		if prodFlag:
-			query = "UPDATE fotorama SET type=%s WHERE url=%s"
-		else:
-			query = "UPDATE fotorama SET type=? WHERE url=?"
-		queryVars = (fotoramaType, oldURL)
-	elif caption is not None:
-		if prodFlag:
-			query = "UPDATE fotorama SET caption=%s WHERE url=%s"
-		else:
-			query = "UPDATE fotorama SET caption=? WHERE url=?"
-		queryVars = (caption, oldURL)
-	if queryVars is not None:
-		cur.execute(query, queryVars)
-		con.commit()
+		real_edit_fotorama_image_in_db(prodFlag, con, cur, oldURL, "url", newURL)
+	if fotoramaType is not None:
+		real_edit_fotorama_image_in_db(prodFlag, con, cur, oldURL, "type", fotoramaType)
+	if caption is not None:
+		real_edit_fotorama_image_in_db(prodFlag, con, cur, oldURL, "caption", caption)
+
+def real_edit_fotorama_image_in_db(prodFlag, con, cur, oldURL, which, data):
+	query = ""
+	queryVars = (data, eventId)
+	if prodFlag:
+		query = "UPDATE fotorama SET %s=%%s WHERE url=%%s" % (which)
+	else:
+		query = "UPDATE fotorama SET %s=? WHERE url=?" % (which)
+	cur.execute(query, queryVars)
+	con.commit()
 
 def remove_caption_from_fotorama_image(prodFlag, con, cur, url):
-	query = ""
-	if prodFlag:
-		query = "UPDATE fotorama SET caption=NULL WHERE url=%s"
-	else:
-		query = "UPDATE fotorama SET caption=NULL WHERE url=?"
-	cur.execute(query, (url,))
-	con.commit()
+	edit_fotorama_image_in_db(prodFlag, con, cur, oldURL, "caption", None)
 
 def remove_fotorama_image_from_db(prodFlag, con, cur, url):
 	query = ""
@@ -114,9 +90,13 @@ async def fotorama_top_level(event, conversationState, conversationData, callbac
 
 	text = "What would you like to do with the fotorama settings?"
 	buttons = [
-		Button.inline("Add a new item.", b'fotorama:add'),
-		Button.inline("Remove an item.", b'fotorama:remove'),
-		Button.inline("Edit an item.", b'fotorama:edit')
+		[
+			Button.inline("Add a new item.", b'fotorama:add'),
+			Button.inline("Remove an item.", b'fotorama:remove'),
+			Button.inline("Edit an item.", b'fotorama:edit')
+		], [
+			Button.inline("<< Back to admin menu.", b'admin')
+		]
 	]
 
 	if callback:
@@ -125,7 +105,7 @@ async def fotorama_top_level(event, conversationState, conversationData, callbac
 		await event.respond(text, buttons=buttons)
 
 async def init(bot, prodFlag, con, cur, conversationState, conversationData, IlliniFursState, adminTest):
-	@bot.on(events.NewMessage(pattern='/fotorama'))
+	@bot.on(events.NewMessage(pattern='/fotoramaMenu'))
 	async def handler(event):
 		if await adminTest(event, cur):
 			await fotorama_top_level(event, conversationState, conversationData)
@@ -133,13 +113,13 @@ async def init(bot, prodFlag, con, cur, conversationState, conversationData, Ill
 
 	@bot.on(events.CallbackQuery(data=b'fotorama'))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			await fotorama_top_level(event, conversationState, conversationData, True)
 		raise events.StopPropagation
 
 	@bot.on(events.CallbackQuery(data=b'fotorama:add'))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			sender = await event.get_sender()
 			who = sender.id
 			if who in conversationState:
@@ -161,7 +141,7 @@ async def init(bot, prodFlag, con, cur, conversationState, conversationData, Ill
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:add:(image|video)')))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			sender = await event.get_sender()
 			who = sender.id
 			text = "Ok, tell me the URL of the item you want to add."
@@ -178,7 +158,7 @@ async def init(bot, prodFlag, con, cur, conversationState, conversationData, Ill
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:add:yes')))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			sender = await event.get_sender()
 			who = sender.id
 			text = "Ok, tell me the caption for the item you want to add."
@@ -189,7 +169,7 @@ async def init(bot, prodFlag, con, cur, conversationState, conversationData, Ill
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:add:no')))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			sender = await event.get_sender()
 			who = sender.id
 			data = conversationData.get(who)
@@ -198,7 +178,7 @@ async def init(bot, prodFlag, con, cur, conversationState, conversationData, Ill
 
 	@bot.on(events.CallbackQuery(data=b'fotorama:remove'))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			text = "Which item would you like to remove?"
 			urls = retrieve_fotorama_images_from_db(prodFlag, cur)
 			for (url,) in urls:
@@ -210,7 +190,7 @@ async def init(bot, prodFlag, con, cur, conversationState, conversationData, Ill
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:remove:(.*)')))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			urlHash = event.data_match[1].decode('utf8')
 			url = urlHashes.get(urlHash)
 			del urlHashes[urlHash]
@@ -226,7 +206,7 @@ async def init(bot, prodFlag, con, cur, conversationState, conversationData, Ill
 
 	@bot.on(events.CallbackQuery(data=b'fotorama:edit'))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			sender = await event.get_sender()
 			who = sender.id
 			if who in conversationState:
@@ -245,7 +225,7 @@ async def init(bot, prodFlag, con, cur, conversationState, conversationData, Ill
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:gen:(.*)')))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			sender = await event.get_sender()
 			who = sender.id
 			if who in conversationState:
@@ -276,7 +256,7 @@ Caption: %s""" % (url, fotoramaType, caption)
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:url:(.*)')))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			sender = await event.get_sender()
 			who = sender.id
 			urlHash = event.data_match[1].decode('utf8')
@@ -290,7 +270,7 @@ Caption: %s""" % (url, fotoramaType, caption)
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:type:(.*)')))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			urlHash = event.data_match[1].decode('utf8')
 			text = "Is this an image or a video?"
 			buttons = [
@@ -305,7 +285,7 @@ Caption: %s""" % (url, fotoramaType, caption)
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:(image|video):(.*)')))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			fotoramaType = event.data_match[1].decode('utf8')
 			urlHash = event.data_match[2].decode('utf8')
 			url = urlHashes.get(urlHash)
@@ -322,7 +302,7 @@ Caption: %s""" % (url, fotoramaType, caption)
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:caption:(.*)')))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			sender = await event.get_sender()
 			who = sender.id
 			urlHash = event.data_match[1].decode('utf8')
@@ -336,7 +316,7 @@ Caption: %s""" % (url, fotoramaType, caption)
 
 	@bot.on(events.CallbackQuery(data=re.compile(b'fotorama:edit:remove:caption:(.*)')))
 	async def handler(event):
-		if await adminTest(event, cur):
+		if await adminTest(event, cur, True):
 			urlHash = event.data_match[1].decode('utf8')
 			url = urlHashes.get(urlHash)
 			remove_caption_from_fotorama_image(prodFlag, con, cur, url)
@@ -350,15 +330,15 @@ Caption: %s""" % (url, fotoramaType, caption)
 
 	@bot.on(events.NewMessage)
 	async def handler(event):
-		if await adminTest(event, cur):
-			sender = await event.get_sender()
-			who = sender.id
-			state = conversationState.get(who)
+		sender = await event.get_sender()
+		who = sender.id
+		state = conversationState.get(who)
 
-			if state is None:
-				return
+		if state is None:
+			return
 
-			elif (state == IlliniFursState.FOTO_ADD_IMAGE or state == IlliniFursState.FOTO_ADD_VIDEO):
+		if (state == IlliniFursState.FOTO_ADD_IMAGE or state == IlliniFursState.FOTO_ADD_VIDEO):
+			if await adminTest(event, cur):
 				text = "Would you like to add a caption for this item?"
 				buttons = [
 					[
@@ -387,15 +367,27 @@ Caption: %s""" % (url, fotoramaType, caption)
 					conversationData[who] = data
 				
 				await event.respond(text, buttons=buttons)
-				raise events.StopPropagation
+			else:
+				if who in conversationState:
+					del conversationState[who]
+				if who in conversationData:
+					del conversationData[who]
+			raise events.StopPropagation
 
-			elif state == IlliniFursState.FOTO_ADD_CAPTION:
+		elif state == IlliniFursState.FOTO_ADD_CAPTION:
+			if await adminTest(event, cur):
 				data = conversationData.get(who)
 				caption = event.text
 				await add_fotorama_image_to_db(event, prodFlag, con, cur, conversationState, conversationData, data.get('url'), data.get('type'), caption)
-				raise events.StopPropagation
+			else:
+				if who in conversationState:
+					del conversationState[who]
+				if who in conversationData:
+					del conversationData[who]
+			raise events.StopPropagation
 
-			elif (state == IlliniFursState.FOTO_EDIT_URL or state == IlliniFursState.FOTO_EDIT_CAPTION):
+		elif (state == IlliniFursState.FOTO_EDIT_URL or state == IlliniFursState.FOTO_EDIT_CAPTION):
+			if await adminTest(event, cur):
 				data = conversationData.get(who)
 				url = data.get('url')
 				urlHash = hashlib.sha256(url.encode()).hexdigest()[:16]
@@ -422,3 +414,9 @@ Caption: %s""" % (url, fotoramaType, caption)
 				]
 
 				await event.respond(text, buttons=buttons)
+			else:
+				if who in conversationState:
+					del conversationState[who]
+				if who in conversationData:
+					del conversationData[who]
+			raise events.StopPropagation
