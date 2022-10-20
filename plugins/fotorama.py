@@ -60,7 +60,7 @@ def edit_fotorama_image_in_db(prodFlag, con, cur, oldURL, newURL=None, fotoramaT
 
 def real_edit_fotorama_image_in_db(prodFlag, con, cur, oldURL, which, data):
 	query = ""
-	queryVars = (data, eventId)
+	queryVars = (data, oldURL)
 	if prodFlag:
 		query = "UPDATE fotorama SET %s=%%s WHERE url=%%s" % (which)
 	else:
@@ -69,7 +69,7 @@ def real_edit_fotorama_image_in_db(prodFlag, con, cur, oldURL, which, data):
 	con.commit()
 
 def remove_caption_from_fotorama_image(prodFlag, con, cur, url):
-	edit_fotorama_image_in_db(prodFlag, con, cur, oldURL, "caption", None)
+	real_edit_fotorama_image_in_db(prodFlag, con, cur, url, "caption", None)
 
 def remove_fotorama_image_from_db(prodFlag, con, cur, url):
 	query = ""
@@ -319,6 +319,7 @@ Caption: %s""" % (url, fotoramaType, caption)
 		if await adminTest(event, cur, True):
 			urlHash = event.data_match[1].decode('utf8')
 			url = urlHashes.get(urlHash)
+
 			remove_caption_from_fotorama_image(prodFlag, con, cur, url)
 			text = "Success! Item updated."
 			buttons = [
