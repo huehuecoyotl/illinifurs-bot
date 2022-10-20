@@ -16,6 +16,11 @@ def retrieve_officer_from_db(prodFlag, cur, title):
 		return None
 	return retval[0]
 
+def retrieve_all_officers_from_db(prodFlag, cur):
+	query = "SELECT username, displayName, title FROM officers"
+	cur.execute(query)
+	return cur.fetchall()
+
 def add_officer_to_db(prodFlag, con, cur, adminId, username, displayName, title, imageURL):
 	chatInviter = False
 	if title == "President" or title == "Vice President":
@@ -63,6 +68,26 @@ async def download_profile_pic(bot, prodFlag, user, baseTitle):
 		os.system("mv %s %s%s" % (filename, baseTitle, extension))
 	return "/images/officers/%s%s" % (baseTitle, extension)
 
+async def show_officers(event, prodFlag, cur, callback=False):
+	officers = retrieve_all_officers_from_db(prodFlag, cur)
+	officers = [(username, displayName, title) for (username, displayName, title) in officers if title != "site-admin"]
+	
+	textBuilder = "Here are the current IlliniFurs officers:"
+	for (username, displayName, title) in officers:
+		currText = """
+
+**%s**
+%s
+@%s""" % (title, displayName, username)
+		textBuilder = textBuilder + currText
+	text = textBuilder
+	buttons = None
+
+	if callback:
+		await event.edit(text, buttons=buttons)
+	else:
+		await event.respond(text, buttons=buttons)
+
 async def officers_top_level(event, conversationState, conversationData, callback=False):
 	sender = await event.get_sender()
 	who = sender.id
@@ -88,6 +113,16 @@ async def officers_top_level(event, conversationState, conversationData, callbac
 		await event.respond(text, buttons=buttons)
 
 async def init(bot, prodFlag, con, cur, conversationState, conversationData, IlliniFursState, adminTest):
+	@bot.on(events.NewMessage(pattern='/officers'))
+	async def handler(event):
+		await show_officers(event, prodFlag, cur)
+		raise events.StopPropagation
+
+	@bot.on(events.CallbackQuery(data=b'officers:show'))
+	async def handler(event):
+		await show_officers(event, prodFlag, cur, True)
+		raise events.StopPropagation
+
 	@bot.on(events.NewMessage(pattern='/officerMenu'))
 	async def handler(event):
 		if await adminTest(event, cur):

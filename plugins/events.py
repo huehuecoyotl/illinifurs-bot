@@ -33,6 +33,15 @@ def retrieve_all_events_from_db(prodFlag, cur):
 		retval = [(name, location, datetime.datetime.strptime(start, "%Y-%m-%d %H:%M:%S"), datetime.datetime.strptime(end, "%Y-%m-%d %H:%M:%S"), allDay, description) for (name, location, start, end, allDay, description) in cur.fetchall()]
 	return retval
 
+def retrieve_weekly_from_db(prodFlag, cur):
+	query = "SELECT name, location, startTime, endTime, dayOfWeek, description FROM weekly_meeting"
+	cur.execute(query)
+	(name, location, startTime, endTime, dayOfWeek, description) = cur.fetchall()[0]
+	if not prodFlag:
+		startTime = datetime.datetime.strptime(startTime, "%H:%M:%S")
+		endTime = datetime.datetime.strptime(endTime, "%H:%M:%S")
+	return (name, location, startTime, endTime, dayOfWeek, description)
+
 def add_event_to_db(prodFlag, con, cur, name, location, start, end, allDay, description):
 	query = ""
 	queryVars = (name, location, start, end, allDay, description)
@@ -65,6 +74,29 @@ def real_update_event_in_db(prodFlag, con, cur, eventId, which, data):
 	else:
 		query = "UPDATE events SET %s=? WHERE id=?" % (which)
 	cur.execute(query, queryVars)
+	con.commit()
+
+def update_weekly_in_db(prodFlag, con, cur, name=None, location=None, startTime=None, endTime=None, dayOfWeek=None, description=None):
+	if name is not None:
+		real_update_weekly_in_db(prodFlag, con, cur, "name", name)
+	if location is not None:
+		real_update_weekly_in_db(prodFlag, con, cur, "location", location)
+	if startTime is not None:
+		real_update_weekly_in_db(prodFlag, con, cur, "startTime", startTime)
+	if endTime is not None:
+		real_update_weekly_in_db(prodFlag, con, cur, "endTime", endTime)
+	if dayOfWeek is not None:
+		real_update_weekly_in_db(prodFlag, con, cur, "dayOfWeek", dayOfWeek)
+	if description is not None:
+		real_update_weekly_in_db(prodFlag, con, cur, "description", description)
+
+def real_update_weekly_in_db(prodFlag, con, cur, which, data):
+	query = ""
+	if prodFlag:
+		query = "UPDATE weekly_meeting SET %s=%%s" % (which)
+	else:
+		query = "UPDATE weekly_meeting SET %s=?" % (which)
+	cur.execute(query, (data,))
 	con.commit()
 
 def remove_event_from_db(prodFlag, con, cur, eventId):
@@ -303,8 +335,10 @@ async def events_top_level(event, who, conversationState, conversationData, Illi
 	buttons = [
 		[
 			Button.inline("Add a new event.", b'events:add:name'),
-			Button.inline("Remove an event.", b'events:remove'),
-			Button.inline("Edit an event.", b'events:edit')
+			Button.inline("Remove an event.", b'events:remove')
+		], [
+			Button.inline("Edit an event.", b'events:edit'),
+			Button.inline("Edit the weekly meeting.", b'events:weekly')
 		], [
 			Button.inline("<< Back to admin menu.", b'admin')
 		]
@@ -322,6 +356,11 @@ async def events_name_prompt(event, who, conversationState, conversationData, Il
 		conversationState[who] = IlliniFursState.EVENT_ADD_NAME
 		buttons = [
 			Button.inline("Cancel", b'events')
+		]
+	elif isinstance(edit, str):
+		conversationState[who] = IlliniFursState.EVENT_WEEKLY_NAME
+		buttons = [
+			Button.inline("Cancel", b'events:weekly')
 		]
 	else:
 		conversationState[who] = IlliniFursState.EVENT_EDIT_NAME
@@ -342,6 +381,11 @@ async def events_location_prompt(event, who, conversationState, conversationData
 		buttons = [
 			Button.inline("Undo", b'events:add:name'),
 			Button.inline("Cancel", b'events')
+		]
+	elif isinstance(edit, str):
+		conversationState[who] = IlliniFursState.EVENT_WEEKLY_LOCATION
+		buttons = [
+			Button.inline("Cancel", b'events:weekly')
 		]
 	else:
 		conversationState[who] = IlliniFursState.EVENT_EDIT_LOCATION
@@ -385,6 +429,26 @@ async def events_allday_prompt(event, who, conversationState, conversationData, 
 	else:
 		await event.respond(text, buttons=buttons)
 
+async def events_weekly_day_prompt(event):
+	text = "What day of the week will the weekly meeting be?"
+	buttons = [
+		[
+			Button.inline("Sunday", b'events:weekly:day:1'),
+			Button.inline("Monday", b'events:weekly:day:2')
+		], [
+			Button.inline("Tuesday", b'events:weekly:day:3'),
+			Button.inline("Wednesday", b'events:weekly:day:4')
+		], [
+			Button.inline("Thursday", b'events:weekly:day:5'),
+			Button.inline("Friday", b'events:weekly:day:6')
+		], [
+			Button.inline("Saturday", b'events:weekly:day:7'),
+			Button.inline("Cancel", b'events:weekly')
+		]
+	]
+
+	await event.edit(text, buttons=buttons)
+
 async def events_date_prompt(event, start, bigAction, year=None, month=None):
 	text = "What day will your event %s? (Be sure to use Central time)" % ("start" if start else "end")
 	buttons = create_calendar(bigAction, year, month)
@@ -405,6 +469,11 @@ async def events_description_prompt(event, who, conversationState, conversationD
 		buttons = [
 			Button.inline("Undo", b'events:add:enddate'),
 			Button.inline("Cancel", b'events')
+		]
+	elif isinstance(edit, str):
+		conversationState[who] = IlliniFursState.EVENT_WEEKLY_DESCRIPTION
+		buttons = [
+			Button.inline("Cancel", b'events:weekly')
 		]
 	else:
 		conversationState[who] = IlliniFursState.EVENT_EDIT_DESCRIPTION
@@ -880,6 +949,149 @@ Description: %s""" % (name, location, start, end, "Yes" if allDay else "No", des
 			await events_description_prompt(event, who, conversationState, conversationData, IlliniFursState, True, eventId)
 		raise events.StopPropagation
 
+	@bot.on(events.CallbackQuery(data=b'events:weekly'))
+	async def handler(event):
+		if await adminTest(event, cur, True):
+			sender = await event.get_sender()
+			who = sender.id
+			if who in conversationState:
+				del conversationState[who]
+			if who in conversationData:
+				del conversationData[who]
+
+			(name, location, startTime, endTime, dayOfWeek, description) = retrieve_weekly_from_db(prodFlag, cur)
+			startTime = startTime.strftime("%-I:%M %p")
+			endTime = endTime.strftime("%-I:%M %p")
+			dayOfWeek = calendar.day_name[(dayOfWeek + 5) % 7]
+			text = """Here is the current information set for the weekly meetings.
+
+Name: %s
+Location: %s
+Start Time: %s
+End Time: %s
+Day of Week: %s
+Description: %s""" % (name, location, startTime, endTime, dayOfWeek, description)
+			buttons = [
+				[
+					Button.inline("Change Name", b'events:weekly:name'),
+					Button.inline("Change Location", b'events:weekly:location')
+				], [
+					Button.inline("Change Start", b'events:weekly:starttime:continue:am'),
+					Button.inline("Change End", b'events:weekly:endtime:continue:am')
+				], [
+					Button.inline("Change Day of Week", b'events:weekly:day'),            
+					Button.inline("Change Description", b'events:weekly:description')
+				], [
+					Button.inline("<< Back to event menu", b'events')
+				]
+			]
+			await event.edit(text, buttons=buttons)
+		raise events.StopPropagation
+
+	@bot.on(events.CallbackQuery(data=b'events:weekly:name'))
+	async def handler(event):
+		if await adminTest(event, cur, True):
+			sender = await event.get_sender()
+			who = sender.id
+			eventId = 'weekly'
+			await events_name_prompt(event, who, conversationState, conversationData, IlliniFursState, True, eventId)
+		raise events.StopPropagation
+
+	@bot.on(events.CallbackQuery(data=b'events:weekly:location'))
+	async def handler(event):
+		if await adminTest(event, cur, True):
+			sender = await event.get_sender()
+			who = sender.id
+			eventId = 'weekly'
+			await events_location_prompt(event, who, conversationState, conversationData, IlliniFursState, True, eventId)
+		raise events.StopPropagation
+
+	@bot.on(events.CallbackQuery(data=b'events:weekly:day'))
+	async def handler(event):
+		if await adminTest(event, cur, True):
+			await events_weekly_day_prompt(event)
+		raise events.StopPropagation
+
+	@bot.on(events.CallbackQuery(data=re.compile(b'events:weekly:day:([1-7])')))
+	async def handler(event):
+		if await adminTest(event, cur, True):
+			dayOfWeek = int(event.data_match[1].decode('utf8'))
+			update_weekly_in_db(prodFlag, con, cur, dayOfWeek=dayOfWeek)
+			text = "Day of weekly event changed!"
+
+			buttons = [
+				Button.inline("Continue editing", b'events:weekly'),
+				Button.inline("<< Back to event menu", b'events')
+			]
+
+			await event.edit(text, buttons=buttons)
+		raise events.StopPropagation
+
+	@bot.on(events.CallbackQuery(data=re.compile(b'events:weekly:(start|end)time:continue:(am|pm)')))
+	async def handler(event):
+		if await adminTest(event, cur, True):
+			eventId = 'weekly'
+			start = (event.data_match[1].decode('utf8') == "start")
+			am = (event.data_match[2].decode('utf8') == "am")
+
+			await events_time_prompt(event, start, "events:weekly:%stime" % "start" if start else "end", am)
+		raise events.StopPropagation
+
+	@bot.on(events.CallbackQuery(data=re.compile(b'events:weekly:(start|end)time:continue:([0-9]*)')))
+	async def handler(event):
+		if await adminTest(event, cur, True):
+			eventId = 'weekly'
+			start = (event.data_match[1].decode('utf8') == "start")
+			hour = int(event.data_match[2].decode('utf8'))
+			am = True
+			if hour >= 12:
+				hour = hour - 12
+				am = False
+
+			await events_time_prompt(event, start, "events:weekly:%stime" % "start" if start else "end", am, hour)
+		raise events.StopPropagation
+
+	@bot.on(events.CallbackQuery(data=re.compile(b'events:weekly:(start|end)time:select:([0-9]*):([0-9]*)')))
+	async def handler(event):
+		if await adminTest(event, cur, True):
+			sender = await event.get_sender()
+			who = sender.id
+			start = (event.data_match[1].decode('utf8') == "start")
+			hour = int(event.data_match[2].decode('utf8'))
+			minute = int(event.data_match[3].decode('utf8'))
+			realDate = datetime.time(hour, minute)
+
+			timeStr = realDate.strftime("%H:%M:%S")
+			text = ""
+			if start:
+				update_weekly_in_db(prodFlag, con, cur, startTime=timeStr)
+				text = "Start of weekly event changed!"
+			else:
+				update_weekly_in_db(prodFlag, con, cur, endTime=timeStr)
+				text = "End of weekly event changed!"
+
+			buttons = [
+				Button.inline("Continue editing", b'events:weekly'),
+				Button.inline("<< Back to event menu", b'events')
+			]
+
+			if who in conversationState:
+				del conversationState[who]
+			if who in conversationData:
+				del conversationData[who]
+
+			await event.edit(text, buttons=buttons)
+		raise events.StopPropagation
+
+	@bot.on(events.CallbackQuery(data=b'events:weekly:description'))
+	async def handler(event):
+		if await adminTest(event, cur, True):
+			sender = await event.get_sender()
+			who = sender.id
+			eventId = 'weekly'
+			await events_description_prompt(event, who, conversationState, conversationData, IlliniFursState, True, eventId)
+		raise events.StopPropagation
+
 	@bot.on(events.NewMessage)
 	async def handler(event):
 		sender = await event.get_sender()
@@ -957,6 +1169,40 @@ Description: %s""" % (name, location, start, end, "Yes" if allDay else "No", des
 				buttons = [
 					Button.inline("Continue editing", bytes("events:edit:%s:gen" % str(eventId), encoding="utf8")),
 					Button.inline("<< Back to event list", b'events:edit')
+				]
+
+				if who in conversationState:
+					del conversationState[who]
+				if who in conversationData:
+					del conversationData[who]
+
+				await event.respond(text, buttons=buttons)
+			else:
+				if who in conversationState:
+					del conversationState[who]
+				if who in conversationData:
+					del conversationData[who]
+			raise events.StopPropagation
+
+		if (state == IlliniFursState.EVENT_WEEKLY_NAME or state == IlliniFursState.EVENT_WEEKLY_LOCATION or state == IlliniFursState.EVENT_WEEKLY_DESCRIPTION):
+			if await adminTest(event, cur):
+				sender = await event.get_sender()
+				who = sender.id
+				
+				text = ""
+				if state == IlliniFursState.EVENT_WEEKLY_NAME:
+					update_weekly_in_db(prodFlag, con, cur, name=event.text)
+					text = "Name of weekly meeting changed!"
+				if state == IlliniFursState.EVENT_WEEKLY_LOCATION:
+					update_weekly_in_db(prodFlag, con, cur, location=event.text)
+					text = "Location of weekly meeting changed!"
+				if state == IlliniFursState.EVENT_WEEKLY_DESCRIPTION:
+					update_weekly_in_db(prodFlag, con, cur, description=event.text)
+					text = "Description of weekly meeting changed!"
+
+				buttons = [
+					Button.inline("Continue editing", b'events:weekly'),
+					Button.inline("<< Back to event menu", b'events')
 				]
 
 				if who in conversationState:

@@ -54,6 +54,16 @@ else:
 			allDay INTEGER NOT NULL,
 			description TEXT NOT NULL
 		);""")
+	cur.execute("""
+		CREATE TABLE IF NOT EXISTS weekly_meeting (
+			restriction INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			location TEXT NOT NULL,
+			startTime TEXT NOT NULL,
+			endTime TEXT NOT NULL,
+			dayOfWeek INTEGER NOT NULL,
+			description TEXT NOT NULL
+		);""")
 	# You'll need to find your telegram id and add it here to test admin bot commands
 	cur.execute("""
 		INSERT OR REPLACE INTO officers
@@ -67,6 +77,12 @@ else:
 			VALUES
 			(1, 'Test', 'Urbana', '2022-10-15 17:00:00', '2022-10-16 19:00:00', 0, 'Test Event'),
 			(2, 'Long Title Splits Over Many Lines', 'Champaign', '2022-10-22 17:00:00', '2022-10-22 19:00:00', 1, 'Other Event https://coyo.tl/');
+		""")
+	cur.execute("""
+		INSERT OR REPLACE INTO weekly_meeting
+			(restriction, name, location, startTime, endTime, dayOfWeek, description)
+			VALUES
+			(1, 'Weekly Meeting', 'Gregory Hall, Room 311', '17:00:00', '19:00:00', 7, 'Please check back soon for more details!');
 		""")
 	con.commit()
 
@@ -84,6 +100,9 @@ class IlliniFursState(Enum):
 	EVENT_EDIT_NAME = auto()
 	EVENT_EDIT_LOCATION = auto()
 	EVENT_EDIT_DESCRIPTION = auto()
+	EVENT_WEEKLY_NAME = auto()
+	EVENT_WEEKLY_LOCATION = auto()
+	EVENT_WEEKLY_DESCRIPTION = auto()
 
 # The state in which different users are, {user_id: state}
 conversationState = {}
