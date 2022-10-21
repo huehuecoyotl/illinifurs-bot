@@ -42,6 +42,11 @@ def retrieve_weekly_from_db(prodFlag, cur):
 		endTime = datetime.datetime.strptime(endTime, "%H:%M:%S")
 	return (name, location, startTime, endTime, dayOfWeek, description)
 
+def retrieve_announce_channel_from_db(prodFlag, cur):
+	query = "SELECT id FROM announce_channel"
+	cur.execute(query)
+	return cur.fetchall()[0]
+
 def add_event_to_db(prodFlag, con, cur, name, location, start, end, allDay, description):
 	query = ""
 	queryVars = (name, location, start, end, allDay, description)
@@ -340,6 +345,7 @@ async def events_top_level(event, who, conversationState, conversationData, Illi
 			Button.inline("Edit an event.", b'events:edit'),
 			Button.inline("Edit the weekly meeting.", b'events:weekly')
 		], [
+			Button.inline("Announce a meeting.", b'events:announce'),
 			Button.inline("<< Back to admin menu.", b'admin')
 		]
 	]
@@ -1090,6 +1096,81 @@ Description: %s""" % (name, location, startTime, endTime, dayOfWeek, description
 			who = sender.id
 			eventId = 'weekly'
 			await events_description_prompt(event, who, conversationState, conversationData, IlliniFursState, True, eventId)
+		raise events.StopPropagation
+
+	@bot.on(events.CallbackQuery(data=b'events:announce'))
+	async def handler(event):
+		if await adminTest(event, cur, True):
+			sender = await event.get_sender()
+			who = sender.id
+			if who in conversationState:
+				del conversationState[who]
+			if who in conversationData:
+				del conversationData[who]
+
+			text = "Which event would you like to announce?"
+			events = retrieve_event_from_db(prodFlag, cur)
+			buttons = [ [Button.inline(name, bytes("events:announce:%s:confirm" % str(eventId), encoding="utf8"))] for eventId, name, start in events]
+			buttons.append([Button.inline("<< Back to events menu", b'events')])
+			await event.edit(text, buttons=buttons)
+		raise events.StopPropagation
+
+	@bot.on(events.CallbackQuery(data=re.compile(b'events:announce:([0-9]*):confirm')))
+	async def handler(event):
+		if await adminTest(event, cur, True):
+			sender = await event.get_sender()
+			who = sender.id
+			if who in conversationState:
+				del conversationState[who]
+
+			eventId = int(event.data_match[1].decode('utf8'))
+			(name, location, start, end, allDay, description) = retrieve_event_from_db(prodFlag, cur, eventId)
+			when = getWhen(start, end, allDay)
+			text = """Here's what the announcement will look like. Are you sure?
+
+**%s**
+__Where:__ %s
+__When:__ %s
+
+%s""" % (name, location, when, description)
+			buttons = [
+				[
+					Button.inline("Announce the event.", bytes("events:announce:%s:go" % str(eventId), encoding='utf8')),
+					Button.inline("Edit the event.", bytes("events:edit:%s:gen" % str(eventId), encoding='utf8'))
+				], [
+					Button.inline("<< Back to event list", b'events:announce')
+				]
+			]
+			await event.edit(text, buttons=buttons)
+		raise events.StopPropagation
+
+	@bot.on(events.CallbackQuery(data=re.compile(b'events:announce:([0-9]*):go')))
+	async def handler(event):
+		if await adminTest(event, cur, True):
+			sender = await event.get_sender()
+			who = sender.id
+			if who in conversationState:
+				del conversationState[who]
+
+			eventId = int(event.data_match[1].decode('utf8'))
+			(name, location, start, end, allDay, description) = retrieve_event_from_db(prodFlag, cur, eventId)
+			when = getWhen(start, end, allDay)
+			announceText = """**%s**
+__Where:__ %s
+__When:__ %s
+
+%s""" % (name, location, when, description)
+
+			announceChannelId = retrieve_announce_channel_from_db(prodFlag, cur)
+			announceChannelId = int("-100%d" % announceChannelId)
+			announceChannel = await bot.get_entity(announceChannelId)
+			await bot.send_message(announceChannel, announceText)
+
+			text = "%s announced!" % name
+			buttons = [
+				Button.inline("<< Back to event list", b'events:announce')
+			]
+			await event.edit(text, buttons=buttons)
 		raise events.StopPropagation
 
 	@bot.on(events.NewMessage)

@@ -64,6 +64,11 @@ else:
 			dayOfWeek INTEGER NOT NULL,
 			description TEXT NOT NULL
 		);""")
+	cur.execute("""
+		CREATE TABLE IF NOT EXISTS announce_channel (
+			restriction INTEGER PRIMARY KEY,
+			id INTEGER NOT NULL
+		);""")
 	# You'll need to find your telegram id and add it here to test admin bot commands
 	cur.execute("""
 		INSERT OR REPLACE INTO officers
@@ -83,6 +88,12 @@ else:
 			(restriction, name, location, startTime, endTime, dayOfWeek, description)
 			VALUES
 			(1, 'Weekly Meeting', 'Gregory Hall, Room 311', '17:00:00', '19:00:00', 7, 'Please check back soon for more details!');
+		""")
+	cur.execute("""
+		INSERT OR REPLACE INTO announce_channel
+			(restriction, id)
+			VALUES
+			(1, 1854750991);
 		""")
 	con.commit()
 
