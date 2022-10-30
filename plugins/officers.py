@@ -2,7 +2,7 @@ import re
 import os
 from telethon import Button, utils, events
 
-OFFICERS_DIRECTORY = os.path.expanduser("~/site/source/public/images/officers/")
+OFFICERS_DIRECTORY = os.path.expanduser("~/icons/")
 
 def retrieve_officer_from_db(prodFlag, cur, title):
 	query = ""
@@ -63,6 +63,7 @@ async def download_profile_pic(bot, prodFlag, user, baseTitle):
 	filename = await bot.download_media(photo)
 	extension = utils.get_extension(photo)
 	if prodFlag:
+		os.system("cp %s %s%s%s" % (filename, OFFICERS_DIRECTORY, filename, extension))
 		os.system("mv %s %s%s%s" % (filename, OFFICERS_DIRECTORY, baseTitle, extension))
 	else:
 		os.system("mv %s %s%s" % (filename, baseTitle, extension))
@@ -209,7 +210,7 @@ Profile Pic: %s""" % (title, username, displayName, imageURL)
 				title = "Treasurer"
 			elif baseTitle == "vp":
 				title = "Vice President"
-			response = retrieve_officer_from_db(prodFlag, cur, url)
+			response = retrieve_officer_from_db(prodFlag, cur, title)
 			adminId = None
 			username = None
 			imageURL = None
@@ -239,7 +240,7 @@ Profile Pic: %s""" % (title, username, displayName, imageURL)
 				title = "Treasurer"
 			elif baseTitle == "vp":
 				title = "Vice President"
-			response = retrieve_officer_from_db(prodFlag, cur, url)
+			response = retrieve_officer_from_db(prodFlag, cur, title)
 			adminId = None
 			username = None
 			imageURL = None
