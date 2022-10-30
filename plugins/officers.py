@@ -2,7 +2,7 @@ import re
 import os
 from telethon import Button, utils, events
 
-OFFICERS_DIRECTORY = os.path.expanduser("~/icons/")
+ICONS_DIRECTORY = os.path.expanduser("~/icons/")
 
 def retrieve_officer_from_db(prodFlag, cur, title):
 	query = ""
@@ -37,37 +37,39 @@ def add_officer_to_db(prodFlag, con, cur, adminId, username, displayName, title,
 	cur.execute(query2, queryVars)
 	con.commit()
 
-def update_officer_image_in_db(prodFlag, con, cur, adminId, imageURL):
+def edit_officer_in_db(prodFlag, con, cur, adminId, imageURL=None, displayName=None):
+	if imageURL is not None:
+		real_edit_officer_in_db(prodFlag, con, cur, adminId, "imageURL", imageURL)
+	if displayName is not None:
+		real_edit_officer_in_db(prodFlag, con, cur, adminId, "displayName", displayName)
+
+def real_edit_officer_in_db(prodFlag, con, cur, adminId, which, data):
 	query = ""
-	queryVars = (imageURL, adminId)
+	queryVars = (data, adminId)
 	if prodFlag:
-		query = "UPDATE officers SET imageURL=%s WHERE id=%s"
+		query = "UPDATE officers SET %s=%%s WHERE id=%%s" % (which)
 	else:
-		query = "UPDATE officers SET imageURL=? WHERE id=?"
+		query = "UPDATE officers SET %s=? WHERE id=?" % (which)
 	cur.execute(query, queryVars)
 	con.commit()
 
-def update_officer_display_name_in_db(prodFlag, con, cur, adminId, displayName):
-	query = ""
-	queryVars = (displayName, adminId)
-	if prodFlag:
-		query = "UPDATE officers SET displayName=%s WHERE id=%s"
-	else:
-		query = "UPDATE officers SET displayName=? WHERE id=?"
-	cur.execute(query, queryVars)
-	con.commit()
-
-async def download_profile_pic(bot, prodFlag, user, baseTitle):
+async def download_profile_pic(bot, prodFlag, user, userId, baseTitle=None):
 	allPhotos = await bot.get_profile_photos(user)
 	photo = allPhotos[0]
 	filename = await bot.download_media(photo)
 	extension = utils.get_extension(photo)
 	if prodFlag:
-		os.system("cp %s %s%s%s" % (filename, OFFICERS_DIRECTORY, filename, extension))
-		os.system("mv %s %s%s%s" % (filename, OFFICERS_DIRECTORY, baseTitle, extension))
+		os.system("mv %s %s%s%s" % (filename, ICONS_DIRECTORY, userId, extension))
+		if baseTitle is not None:
+			os.system("ln -s %s%s%s %s%s%s" % (ICONS_DIRECTORY, userId, extension, ICONS_DIRECTORY, baseTitle, extension))
 	else:
-		os.system("mv %s %s%s" % (filename, baseTitle, extension))
-	return "/images/officers/%s%s" % (baseTitle, extension)
+		os.system("mv %s %s%s" % (filename, userId, extension))
+		if baseTitle is not None:
+			os.system("ln -s %s%s %s%s" % (userId, extension, baseTitle, extension))
+	if baseTitle is not None:
+		return "/icons/%s%s" % (baseTitle, extension)	
+	else:
+		return "/icons/%s%s" % (userId, extension)
 
 async def show_officers(event, prodFlag, cur, callback=False):
 	officers = retrieve_all_officers_from_db(prodFlag, cur)
@@ -217,8 +219,9 @@ Profile Pic: %s""" % (title, username, displayName, imageURL)
 			text = ""
 			if response is not None:
 				(adminId, username, displayName, title, imageURL, chatInviter) = response
-				newImageURL = await download_profile_pic(bot, prodFlag, username, baseTitle)
-				update_officer_image_in_db(prodFlag, con, cur, adminId, newImageURL)
+				user = await bot.get_entity(adminId)
+				displayName = utils.get_display_name(user)
+				edit_officer_in_db(prodFlag, con, cur, adminId, displayName=displayName)
 				text = "The %s's display name has been refreshed! It is now %s" % (title, displayName)
 			else:
 				text = "There appears to be no current %s. Please enter one into the DB first!" % title
@@ -247,8 +250,8 @@ Profile Pic: %s""" % (title, username, displayName, imageURL)
 			text = ""
 			if response is not None:
 				(adminId, username, displayName, title, imageURL, chatInviter) = response
-				newImageURL = await download_profile_pic(bot, prodFlag, username, baseTitle)
-				update_officer_image_in_db(prodFlag, con, cur, adminId, newImageURL)
+				newImageURL = await download_profile_pic(bot, prodFlag, username, adminId, baseTitle)
+				edit_officer_in_db(prodFlag, con, cur, adminId, imageURL=newImageURL)
 				text = "The %s's profile pic has been refreshed! It is now https://illinifurs.com%s" % (title, newImageURL)
 			else:
 				text = "There appears to be no current %s. Please enter one into the DB first!" % title
@@ -296,7 +299,7 @@ Profile Pic: %s""" % (title, username, displayName, imageURL)
 
 						user = await bot.get_entity(username)
 						adminId = user.id
-						imageURL = await download_profile_pic(bot, prodFlag, username, baseTitle)
+						imageURL = await download_profile_pic(bot, prodFlag, username, adminId, baseTitle)
 						displayName = utils.get_display_name(user)
 						add_officer_to_db(prodFlag, con, cur, adminId, username, displayName, title, imageURL)
 
