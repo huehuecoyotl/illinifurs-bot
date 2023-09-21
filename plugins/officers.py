@@ -61,11 +61,11 @@ async def download_profile_pic(bot, prodFlag, user, userId, baseTitle=None):
 	if prodFlag:
 		os.system("mv %s %s%s%s" % (filename, ICONS_DIRECTORY, userId, extension))
 		if baseTitle is not None:
-			os.system("ln -s %s%s%s %s%s%s" % (ICONS_DIRECTORY, userId, extension, ICONS_DIRECTORY, baseTitle, extension))
+			os.system("ln -fs %s%s%s %s%s%s" % (ICONS_DIRECTORY, userId, extension, ICONS_DIRECTORY, baseTitle, extension))
 	else:
 		os.system("mv %s %s%s" % (filename, userId, extension))
 		if baseTitle is not None:
-			os.system("ln -s %s%s %s%s" % (userId, extension, baseTitle, extension))
+			os.system("ln -fs %s%s %s%s" % (userId, extension, baseTitle, extension))
 	if baseTitle is not None:
 		return "/icons/%s%s" % (baseTitle, extension)	
 	else:
