@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-	
+
 import os
 import json
 import socket
@@ -24,7 +24,7 @@ prodFlag = socket.gethostname() == "illinifurs.com"
 con = None
 cur = None
 if prodFlag:
-	con = mysql.connector.connect(host="localhost", user="illapp", password=secrets["website-mysql-pw"], database="website")
+	con = mysql.connector.connect(host="localhost", user="illapp", password=secrets["website-mysql-pw"], database="website", charset="utf8mb4")
 	cur = con.cursor()
 else:
 	con = sqlite3.connect("test.db")
